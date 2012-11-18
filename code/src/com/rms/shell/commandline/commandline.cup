@@ -1,0 +1,147 @@
+package com.rms.shell.commandline;
+
+import java_cup.runtime.*;
+
+terminal            AMPERSAND;
+terminal            APPEND;
+terminal            EARLIER_COMMAND;
+terminal            LAST_COMMAND;
+terminal            PIPE;
+terminal            QUOTED_STRING;
+terminal            REDIRECT_IN;
+terminal            REDIRECT_OUT;
+terminal            SEPARATOR;
+terminal            STRING;
+terminal            VARIABLE;
+
+non terminal        command;
+non terminal        command_element;
+non terminal        command_line;
+non terminal        immediate_command_line;
+non terminal        pipeline;
+non terminal        pipeline_without_redirection;
+non terminal        recalled_command;
+non terminal        redirect_in;
+non terminal        redirect_out;
+non terminal        separators;
+
+command_line ::=
+    immediate_command_line:cl
+    {: 
+        RESULT = cl;
+    :}
+|
+    immediate_command_line:cl AMPERSAND
+    {:
+        ((CommandLine)cl).executeInBackground();
+        RESULT = cl;
+    :}
+;
+
+immediate_command_line ::=
+    pipeline:p
+    {:
+        CommandLine command_line = new CommandLine();
+        RESULT = command_line.addPipeline((Pipeline)p);
+    :}
+|
+    immediate_command_line:cl separators pipeline:p
+    {: RESULT = ((CommandLine)cl).addPipeline((Pipeline)p); :}
+;
+
+pipeline ::=
+    pipeline_without_redirection:p
+    {:
+        RESULT = p;
+    :}
+|
+    pipeline_without_redirection:p redirect_in command_element:e
+    {:
+        ((Pipeline)p).redirectIn((CommandElement)e);
+        RESULT = p;
+    :}
+|
+    pipeline_without_redirection:p redirect_out:out command_element:e
+    {:
+        ((Pipeline)p).redirectOut((CommandElement)e, (String)out);
+        RESULT = p;
+    :}
+|
+    pipeline_without_redirection:p redirect_in command_element:e_in 
+        redirect_out:out command_element:e_out
+    {:
+        ((Pipeline)p).redirectIn((CommandElement)e_in);
+        ((Pipeline)p).redirectOut((CommandElement)e_out, (String)out);
+        RESULT = p;
+    :}
+|
+    pipeline_without_redirection:p redirect_out:out command_element:e_out 
+        redirect_in command_element:e_in
+    {:
+        ((Pipeline)p).redirectIn((CommandElement)e_in);
+        ((Pipeline)p).redirectOut((CommandElement)e_out, (String)out);
+        RESULT = p;
+    :}
+;
+
+pipeline_without_redirection ::=
+    command:c
+    {:
+        Pipeline pipeline = new Pipeline();
+        RESULT = pipeline.addCommand((AbstractCommand)c);
+    :}
+|
+    pipeline:p PIPE command:c
+    {: RESULT = ((Pipeline)p).addCommand((AbstractCommand)c); :}
+;
+
+command ::=
+    command_element:e
+    {:
+        Command command = Command.create();
+        RESULT = command.addElement((CommandElement)e);
+    :}
+|
+    command:c command_element:e
+    {: RESULT = ((Command)c).addElement((CommandElement)e); :}
+|
+    recalled_command:c
+    {: RESULT = c; :}
+;
+
+recalled_command ::=
+    LAST_COMMAND
+    {: RESULT = LastCommand.create(); :}
+|
+    EARLIER_COMMAND STRING:n
+    {: RESULT = EarlierCommand.create((String)n); :}
+;
+
+command_element ::=
+    VARIABLE:v
+    {: RESULT = Variable.create((String)v); :}
+|
+    STRING:s
+    {: RESULT = UnquotedString.create((String)s); :}
+|
+    QUOTED_STRING:s
+    {: RESULT = QuotedString.create((String)s); :}
+;
+
+separators ::=
+    SEPARATOR
+|
+    separators SEPARATOR
+;
+
+redirect_in ::=
+    REDIRECT_IN
+;
+
+redirect_out ::=
+    REDIRECT_OUT:x
+    {: RESULT = x; :}
+|
+    APPEND:x
+    {: RESULT = x; :}
+;
